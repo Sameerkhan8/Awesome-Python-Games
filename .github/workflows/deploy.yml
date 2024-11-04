@@ -1,0 +1,41 @@
+name: Build and Deploy to Azure VM
+
+on:
+  push:
+    branches:
+      - main  # Triggers on push to main branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Step 2: Log in to Azure Container Registry
+      - name: Log in to Azure Container Registry
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.AZURE_CONTAINER_REGISTRY }}" --username "${{ secrets.ACR_USERNAME }}" --password-stdin
+
+      # Step 3: Build the Docker image
+      - name: Build Docker Image
+        run: docker build -t "${{ secrets.AZURE_CONTAINER_REGISTRY }}/awesome-python-games:latest" ./docker
+
+      # Step 4: Push the Docker image to ACR
+      - name: Push Docker Image
+        run: docker push "${{ secrets.AZURE_CONTAINER_REGISTRY }}/awesome-python-games:latest"
+
+      # Step 5: SSH into VM and deploy the container
+      - name: Deploy to Azure VM
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.AZURE_CONTAINER_REGISTRY }}/awesome-python-games:latest
+            docker stop awesome-python-games || true  # Stop any existing container
+            docker rm awesome-python-games || true    # Remove it
+            docker run -d --name awesome-python-games -p 80:80 ${{ secrets.AZURE_CONTAINER_REGISTRY }}/awesome-python-games:latest
+
